@@ -291,4 +291,12 @@ val DEFAULT_SNI_POOL: List<String> = listOf(
     "accounts.googl.com",
     // Issue #47: same DPI-passing behaviour on MCI / Samantel.
     "scholar.google.com",
+    // Ported from upstream Python FRONT_SNI_POOL_GOOGLE (commit 57738ec);
+    // more rotation material for DPI-fingerprint spread and a couple of
+    // SNIs (maps/play) that pass DPI where shorter *.google.com names don't.
+    "maps.google.com",
+    "chat.google.com",
+    "translate.google.com",
+    "play.google.com",
+    "lens.google.com",
 )

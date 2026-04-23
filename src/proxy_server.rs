@@ -604,6 +604,22 @@ async fn plain_tcp_passthrough(
     upstream_socks5: Option<&str>,
 ) {
     let target_host = host.trim_start_matches('[').trim_end_matches(']');
+    // Shorter connect timeout for IP literals (4s vs 10s for hostnames).
+    // Ported from upstream Python 7b1812c: when the target is an IP (i.e.
+    // a raw Telegram DC, or an IP someone hardcoded), and that route is
+    // DPI-dropped, the client speeds up its own DC-rotation / fallback if
+    // we fail fast. Ten seconds of "waiting for a dead IP" translates
+    // directly into Telegram's 10s-per-DC rotation delay — users see the
+    // app sit on "connecting..." for nearly a minute as it walks through
+    // DC1, DC2, DC3. At 4s we cut that in roughly half.
+    // Hostnames still get 10s because DNS + first-hop TCP genuinely can
+    // take that long on flaky links, and the resolver fallbacks already
+    // trim the worst case.
+    let connect_timeout = if looks_like_ip(target_host) {
+        std::time::Duration::from_secs(4)
+    } else {
+        std::time::Duration::from_secs(10)
+    };
     let upstream = if let Some(proxy) = upstream_socks5 {
         match socks5_connect_via(proxy, target_host, port).await {
             Ok(s) => {
@@ -619,7 +635,7 @@ async fn plain_tcp_passthrough(
                     e
                 );
                 match tokio::time::timeout(
-                    std::time::Duration::from_secs(10),
+                    connect_timeout,
                     TcpStream::connect((target_host, port)),
                 )
                 .await
@@ -631,7 +647,7 @@ async fn plain_tcp_passthrough(
         }
     } else {
         match tokio::time::timeout(
-            std::time::Duration::from_secs(10),
+            connect_timeout,
             TcpStream::connect((target_host, port)),
         )
         .await
@@ -645,7 +661,10 @@ async fn plain_tcp_passthrough(
                 return;
             }
             Err(_) => {
-                tracing::debug!("plain-tcp connect {}:{} timeout", host, port);
+                tracing::debug!(
+                    "plain-tcp connect {}:{} timeout (likely blocked; client should rotate)",
+                    host, port
+                );
                 return;
             }
         }
@@ -1103,6 +1122,31 @@ where
     };
 
     let body = read_body(stream, &leftover, &headers).await?;
+
+    // ── Per-host URL fix-ups ──────────────────────────────────────────
+    // x.com's GraphQL endpoints concatenate three huge JSON blobs into
+    // the query string: `?variables=<json>&features=<json>&fieldToggles=<json>`.
+    // The combined URL regularly exceeds Apps Script's URL length limit
+    // (it returns a generic "relay error" with no useful detail). The
+    // `variables=` portion alone is enough for x.com to serve the
+    // timeline — `features` / `fieldToggles` are client-capability
+    // hints it tolerates being absent. Truncating at the first `&`
+    // after `?variables=` ships a working request that fits under the
+    // limit. Ported from upstream Python 2d959d4 (p0u1ya's fix).
+    let path = if host.eq_ignore_ascii_case("x.com")
+        && path.starts_with("/i/api/graphql/")
+        && path.contains("?variables=")
+    {
+        match path.split_once('&') {
+            Some((short, _)) => {
+                tracing::debug!("x.com graphql URL truncated: {} chars -> {}", path.len(), short.len());
+                short.to_string()
+            }
+            None => path,
+        }
+    } else {
+        path
+    };
 
     let default_port = if scheme == "https" { 443 } else { 80 };
     let url = if port == default_port {

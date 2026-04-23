@@ -1094,6 +1094,18 @@ pub const DEFAULT_GOOGLE_SNI_POOL: &[&str] = &[
     // core *.google.com cert so it handshakes normally against
     // google_ip:443.
     "scholar.google.com",
+    // Additional Google properties for rotation. Ported from upstream
+    // Python `FRONT_SNI_POOL_GOOGLE` (masterking32/MasterHttpRelayVPN
+    // commit 57738ec, "Add additional Google services to exclusion
+    // lists"). All served off the same GFE IP range, all covered by the
+    // wildcard cert, all give the DPI-fingerprint spread without extra
+    // config. A few of these (maps.google.com, play.google.com) reliably
+    // pass DPI on carriers where the shorter `*.google.com` names don't.
+    "maps.google.com",
+    "chat.google.com",
+    "translate.google.com",
+    "play.google.com",
+    "lens.google.com",
 ];
 
 /// Build the pool of SNI hosts used for outbound connections to the Google
