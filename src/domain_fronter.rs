@@ -733,9 +733,24 @@ impl DomainFronter {
                 return error_response(502, &format!("Relay error: {}", e));
             }
             Err(_) => {
+                // Timeout here means Apps Script didn't respond within
+                // REQUEST_TIMEOUT_SECS (currently 25). The most common
+                // cause by far is the account's daily UrlFetchApp quota
+                // being exhausted — once Google kills the script mid-exec,
+                // our relay hangs until timeout because no body ever comes
+                // back. Surface that possibility in the message instead
+                // of just "timeout", which has burned several users asking
+                // "why did it work yesterday" (see issues #99, #111, #105).
                 self.relay_failures.fetch_add(1, Ordering::Relaxed);
-                tracing::error!("Relay timeout");
-                return error_response(504, "Relay timeout");
+                tracing::error!("Relay timeout — Apps Script unresponsive");
+                return error_response(
+                    504,
+                    "Relay timeout — Apps Script did not respond. \
+                     Most likely cause: daily UrlFetchApp quota exhausted \
+                     (resets 00:00 UTC). Other possibilities: script.google.com \
+                     unreachable from your network, or the Apps Script edge is having issues. \
+                     Check the script's Executions tab at script.google.com for the real error.",
+                );
             }
         };
         self.bytes_relayed.fetch_add(bytes.len() as u64, Ordering::Relaxed);
