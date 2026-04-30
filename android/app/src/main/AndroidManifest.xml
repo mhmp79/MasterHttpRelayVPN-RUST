@@ -98,9 +98,25 @@
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="vpn_relay" />
         </service>
-
+        
         <!--
-          AppCompat runtime-locale bootstrap. AppCompatDelegate.setApplicationLocales()
+          VpnTileService. this service declaration tells Android your app
+        wants a native Quick Settings tile (like Wi-Fi/Bluetooth)
+        -->
+      
+        <service
+    android:name=".VpnTileService"
+    android:label="@string/app_name"
+    android:icon="@drawable/ic_vpn_tile"
+    android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
+    android:exported="true">
+     <intent-filter>
+        <action android:name="android.service.quicksettings.action.QS_TILE" />
+    </intent-filter>
+        </service>
+        
+        <!--
+           AppCompat runtime-locale bootstrap. AppCompatDelegate.setApplicationLocales()
           is a no-op on API < 33 without this service declaration — it's how
           AppCompat signals to itself that the app opted into the per-app
           language API and wants AppCompat to persist the preference across
